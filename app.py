@@ -1,32 +1,45 @@
 import streamlit as st
-import joblib
 import pandas as pd
+import joblib
 
-# Load models and scaler using relative paths
+# Load models and scaler
 log_reg = joblib.load('./logistic_model.pkl')
 regressor = joblib.load('./regression_model.pkl')
 scaler = joblib.load('./scaler.pkl')
 
 st.title("ACCT 220 Early Predictor")
 
-# Input fields
-attendance = st.number_input("Attendance Percentage (0-100):", min_value=0.0, max_value=100.0, step=1.0)
-first_assignment = st.number_input("First Assignment Percentage (0-100):", min_value=0.0, max_value=100.0, step=1.0)
-first_project = st.number_input("First Project Percentage (0-100):", min_value=0.0, max_value=100.0, step=1.0)
-first_exam = st.number_input("First Exam Percentage (0-100):", min_value=0.0, max_value=100.0, step=1.0)
+# File Upload
+st.header("Upload a CSV File for Bulk Predictions")
+uploaded_file = st.file_uploader("Choose a CSV file", type=["csv"])
 
-if st.button("Predict"):
+if uploaded_file is not None:
     try:
-        input_data = pd.DataFrame([[attendance, first_assignment, first_project, first_exam]],
-                                  columns=['Average_Attendance', 'First_Assignment', 'First_Project', 'First_Exam'])
-        student_data = scaler.transform(input_data)
+        # Read the uploaded file
+        data = pd.read_csv(uploaded_file)
 
-        risk_prediction = log_reg.predict(student_data)
-        predicted_score = regressor.predict(student_data)[0]
+        # Check required columns
+        required_columns = ['Average_Attendance', 'First_Assignment', 'First_Project', 'First_Exam']
+        if not all(column in data.columns for column in required_columns):
+            st.error(f"The file must contain the following columns: {', '.join(required_columns)}")
+        else:
+            # Scale the input data
+            scaled_data = scaler.transform(data[required_columns])
 
-        risk_label = "At-Risk" if risk_prediction[0] == 1 else "Not At-Risk"
-        st.success(f"Risk Status: {risk_label}")
-        st.info(f"Predicted Final Score: {predicted_score:.2f}")
+            # Generate predictions
+            risk_predictions = log_reg.predict(scaled_data)
+            final_scores = regressor.predict(scaled_data)
+
+            # Add results to the DataFrame
+            data['Risk_Status'] = ['At-Risk' if pred == 1 else 'Not At-Risk' for pred in risk_predictions]
+            data['Predicted_Final_Score'] = final_scores
+
+            # Display results
+            st.success("Predictions generated successfully!")
+            st.dataframe(data)
+
+            # Option to download the results as a CSV file
+            csv = data.to_csv(index=False)
+            st.download_button("Download Results", csv, "predictions.csv", "text/csv")
     except Exception as e:
         st.error(f"An error occurred: {e}")
-
